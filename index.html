@@ -9,28 +9,22 @@
   <!-- Manifest PWA -->
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#6C4AE2">
-  <!-- iOS support -->
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- LINK A CSS (archivo local en la misma carpeta) -->
+  <!-- CSS -->
   <link rel="stylesheet" href="styles.css">
-  <!-- Nota: El CSS va en el panel CSS de CodePen, y el JS en el panel JS -->
 </head>
 <body>
   <div class="wrap">
-    <!-- LEFT -->
+    <!-- LEFT (reproductor) -->
     <div class="left" id="leftCard" aria-label="Reproductor">
       <div class="top-controls">
         <div class="title-small">NOW PLAYING</div>
         <div style="display:flex;gap:8px">
-          <button class="icon-btn" id="btnQueue" title="Cola">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h18M3 12h18M3 17h12" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
-          <button class="icon-btn" id="btnMinimize" title="Minimizar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
-          </button>
+          <button class="icon-btn" id="btnQueue" title="Cola">☰</button>
+          <button class="icon-btn" id="btnMinimize" title="Minimizar">─</button>
         </div>
       </div>
 
@@ -48,46 +42,22 @@
           <div class="track-sub" id="nowArtist">Busca y reproduce</div>
         </div>
 
-        <!-- video rectangular visible -->
-        <div class="video-box" id="videoBox">
-          <div id="ytVisible"></div>
-        </div>
+        <div class="video-box" id="videoBox"><div id="ytVisible"></div></div>
 
         <div class="controls">
-          <button class="control" id="shuffleBtn" title="Aleatorio">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h3l3 8 4-8h4" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
-          <button class="control" id="prevBtn" title="Anterior">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M19 18V6L11 12l8 6zM5 6v12" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
-
-          <button class="play" id="playBtn" title="Play/Pausa">
-            <svg id="playIcon" width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#1b0a00"></path></svg>
-          </button>
-
-          <button class="control" id="nextBtn" title="Siguiente">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 6v12l8-6-8-6zM19 6v12" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
-          <button class="control" id="repeatBtn" title="Repetir">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 15v4h-4M3 9v-4h4" stroke="currentColor" stroke-width="1.6"></path><path d="M21 15a6 6 0 0 0-6-6H7" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
+          <button class="control" id="shuffleBtn" title="Aleatorio">🔀</button>
+          <button class="control" id="prevBtn" title="Anterior">⏮</button>
+          <button class="play" id="playBtn" title="Play/Pausa"><svg id="playIcon" width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#1b0a00"></path></svg></button>
+          <button class="control" id="nextBtn" title="Siguiente">⏭</button>
+          <button class="control" id="repeatBtn" title="Repetir">🔁</button>
         </div>
 
-        <div class="progress" aria-hidden="false">
-          <div class="bar" id="progressBar"></div>
-        </div>
+        <div class="progress" aria-hidden="false"><div class="bar" id="progressBar"></div></div>
 
         <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
-          <button class="icon-btn" id="btnVideoToggle" title="Ocultar/Ver video">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"></rect><path d="M21 8v8" stroke="currentColor" stroke-width="1.4"></path></svg>
-          </button>
-
-          <!-- Muevo aqui el boton de crear playlist para que sea visible en movil -->
+          <button class="icon-btn" id="btnVideoToggle" title="Ocultar/Ver video">🎞</button>
           <button class="icon-btn" id="btnCreatePL" title="Crear playlist" style="width:44px;height:40px;padding:6px;font-weight:700">+</button>
-
-          <button class="icon-btn" id="btnFullScreen" title="Pantalla completa">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 4h6M20 20h-6M20 4v6M4 20v-6" stroke="currentColor" stroke-width="1.4"></path></svg>
-          </button>
+          <button class="icon-btn" id="btnFullScreen" title="Pantalla completa">⤢</button>
         </div>
       </div>
 
@@ -98,14 +68,9 @@
     <div class="right" id="rightPanel">
       <div class="search-row">
         <div class="search-box">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.6"></path></svg>
+          <svg width="18" height="18"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.6"></path></svg>
           <input id="searchInput" placeholder="Buscar (máx 7 resultados)" autocomplete="off"/>
-          <button id="searchBtn" class="icon-btn" style="width:40px;height:40px;padding:6px">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.6"></path></svg>
-          </button>
-        </div>
-        <div style="display:flex;gap:8px">
-          <!-- Boton de favoritos eliminado según tu pedido -->
+          <button id="searchBtn" class="icon-btn" style="width:40px;height:40px;padding:6px">🔎</button>
         </div>
       </div>
 
@@ -125,7 +90,6 @@
     </div>
   </div>
 
-  <!-- mini player -->
   <div class="mini hidden" id="miniPlayer" aria-hidden="true">
     <div class="mthumb" id="miniThumb" style="background-image:url('https://dummyimage.com/600x600/222/fff')"></div>
     <div class="mmeta">
@@ -133,20 +97,17 @@
       <div class="msub" id="miniArtist">—</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button class="icon-btn" id="miniPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 18V6L11 12l8 6zM5 6v12" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+      <button class="icon-btn" id="miniPrev">⏮</button>
       <button class="icon-btn" id="miniPlay"><svg id="miniPlayIcon" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#111"></path></svg></button>
-      <button class="icon-btn" id="miniNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 6v12l8-6-8-6zM19 6v12" stroke="currentColor" stroke-width="1.2"></path></svg></button>
+      <button class="icon-btn" id="miniNext">⏭</button>
     </div>
   </div>
 
-  <!-- modal & toast -->
   <div id="modalRoot" class="hidden"></div>
   <div id="toastRoot" class="hidden"></div>
-
-  <!-- YT holder (hidden iframe will be appended here) -->
   <div id="ytApiHolder" style="display:none"></div>
 
-  <!-- SCRIPT principal -->
+  <!-- script principal -->
   <script src="script.js"></script>
 </body>
 </html>

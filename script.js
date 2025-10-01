@@ -1,6 +1,4 @@
-// script.js — versión adaptada para PWA (registro de Service Worker al final)
-// Tu script original, con pequeños comentarios y registrando sw.js al final.
-
+// script.js — Completo: reproductor YouTube + Media Session + Notificaciones + Service Worker messaging
 document.addEventListener('DOMContentLoaded', function () {
 
   /* =====================
@@ -9,8 +7,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const CONFIG = {
     YT_MAX_RESULTS: 7,
     API_KEYS: [
-      // Atención: estas claves están en el cliente. Es recomendable restringirlas por referrer
-      // en la consola de Google Cloud o mover las llamadas a un backend.
       "AIzaSyCzu-Mqx22V83ktalXksUnC1AhtZwzyb-0",
       "AIzaSyBM-uvKMHe5GxNuMpWB45-RWVUGYOGwEyQ",
       "AIzaSyAd6JdvYn7YGMfSY9EaJtCEUGd11tKa6ZI",
@@ -29,8 +25,22 @@ document.addEventListener('DOMContentLoaded', function () {
     playlists: JSON.parse(localStorage.getItem(CONFIG.STORAGE_PREFIX + 'playlists') || '{}'),
     keyIndex: parseInt(localStorage.getItem(CONFIG.STORAGE_PREFIX + 'key_index') || '0', 10) || 0
   };
-  function saveStorage(){ localStorage.setItem(CONFIG.STORAGE_PREFIX + 'recent', JSON.stringify(STORAGE.recent)); localStorage.setItem(CONFIG.STORAGE_PREFIX + 'fav', JSON.stringify(STORAGE.favorites)); localStorage.setItem(CONFIG.STORAGE_PREFIX + 'playlists', JSON.stringify(STORAGE.playlists)); localStorage.setItem(CONFIG.STORAGE_PREFIX + 'key_index', STORAGE.keyIndex.toString()); }
-  function getCurrentKeyAndAdvance(advance=false){ const keys = CONFIG.API_KEYS; let idx = STORAGE.keyIndex % keys.length; const key = keys[idx]; if(advance){ STORAGE.keyIndex = (idx + 1) % keys.length; saveStorage(); } return {key, idx}; }
+  function saveStorage(){
+    localStorage.setItem(CONFIG.STORAGE_PREFIX + 'recent', JSON.stringify(STORAGE.recent));
+    localStorage.setItem(CONFIG.STORAGE_PREFIX + 'fav', JSON.stringify(STORAGE.favorites));
+    localStorage.setItem(CONFIG.STORAGE_PREFIX + 'playlists', JSON.stringify(STORAGE.playlists));
+    localStorage.setItem(CONFIG.STORAGE_PREFIX + 'key_index', STORAGE.keyIndex.toString());
+  }
+  function getCurrentKeyAndAdvance(advance=false){
+    const keys = CONFIG.API_KEYS;
+    let idx = STORAGE.keyIndex % keys.length;
+    const key = keys[idx];
+    if(advance){
+      STORAGE.keyIndex = (idx + 1) % keys.length;
+      saveStorage();
+    }
+    return {key, idx};
+  }
 
   /* =====================
      UI helpers
@@ -86,33 +96,100 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* =====================
-     YouTube search with rotation
+     Notificaciones & Media Session helpers
      ===================== */
-  async function youtubeSearch(query, maxResults=CONFIG.YT_MAX_RESULTS){
-    if(!query || !query.trim()) return [];
-    const q = encodeURIComponent(query);
-    for(let i=0;i<CONFIG.API_KEYS.length;i++){
-      const {key, idx} = getCurrentKeyAndAdvance(i>0);
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxResults}&q=${q}&key=${key}`;
-      try{
-        const res = await fetch(url);
-        if(!res.ok) { continue; }
-        const data = await res.json();
-        STORAGE.keyIndex = idx; saveStorage();
-        return (data.items || []).map(it=>({
-          videoId: it.id.videoId,
-          title: it.snippet.title,
-          channel: it.snippet.channelTitle,
-          thumb: it.snippet.thumbnails?.high?.url || it.snippet.thumbnails?.default?.url
-        }));
-      }catch(err){ continue; }
+
+  async function ensureNotificationPermission(){
+    if(!('Notification' in window)) return false;
+    if(Notification.permission === 'granted') return true;
+    if(Notification.permission === 'denied') return false;
+    try{
+      const p = await Notification.requestPermission();
+      return p === 'granted';
+    }catch(e){
+      return false;
     }
-    showToast('No fue posible conectar con YouTube');
-    return [];
+  }
+
+  function updateMediaSession(track, playing=false){
+    if(!('mediaSession' in navigator)) return;
+    try{
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track?.title || 'MiPlayer',
+        artist: track?.channel || '',
+        album: '',
+        artwork: [
+          { src: track?.thumb || './icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: track?.thumb || './icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+        ]
+      });
+      navigator.mediaSession.setActionHandler('play', ()=>{ proxyMediaAction('play'); });
+      navigator.mediaSession.setActionHandler('pause', ()=>{ proxyMediaAction('pause'); });
+      navigator.mediaSession.setActionHandler('previoustrack', ()=>{ proxyMediaAction('prev'); });
+      navigator.mediaSession.setActionHandler('nexttrack', ()=>{ proxyMediaAction('next'); });
+      navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+    }catch(e){ console.warn('mediaSession error', e); }
+  }
+
+  async function showMediaNotification(track, playing){
+    if(!('serviceWorker' in navigator)) return;
+    const ok = await ensureNotificationPermission();
+    if(!ok) return;
+    try{
+      const reg = await navigator.serviceWorker.ready;
+      const title = track?.title || 'MiPlayer';
+      const options = {
+        body: track?.channel || '',
+        tag: 'miplayer-media',
+        renotify: true,
+        silent: false,
+        icon: track?.thumb || './icons/icon-192.png',
+        badge: './icons/icon-192.png',
+        data: { videoId: track?.videoId, playing: !!playing },
+        actions: [
+          { action: 'prev', title: 'Anterior' },
+          { action: playing ? 'pause' : 'play', title: playing ? 'Pausar' : 'Reproducir' },
+          { action: 'next', title: 'Siguiente' }
+        ]
+      };
+      reg.showNotification(title, options);
+    }catch(e){
+      console.warn('showMediaNotification error', e);
+    }
+  }
+
+  async function closeMediaNotification(){
+    if(!('serviceWorker' in navigator)) return;
+    try{
+      const reg = await navigator.serviceWorker.ready;
+      const notifs = await reg.getNotifications({ tag: 'miplayer-media' });
+      notifs.forEach(n => n.close());
+    }catch(e){}
+  }
+
+  function proxyMediaAction(action){
+    if(action === 'play') togglePlayPause();
+    else if(action === 'pause') {
+      try {
+        const p = (videoShown && visiblePlayer && visiblePlayer.getPlayerState) ? visiblePlayer : hiddenPlayer;
+        if(p && typeof p.pauseVideo === 'function') p.pauseVideo();
+      }catch(e){}
+    } else if(action === 'next') playNext();
+    else if(action === 'prev') playPrev();
+  }
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('message', (ev)=>{
+      const d = ev.data;
+      if(!d) return;
+      if(d.type === 'media-action'){
+        proxyMediaAction(d.action);
+      }
+    });
   }
 
   /* =====================
-     Player & state
+     YouTube search + Player & state (completo)
      ===================== */
   let visiblePlayer = null;
   let hiddenPlayer = null;
@@ -130,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // carga dinámica de la API de YT
   (function loadYT(){ const t = document.createElement('script'); t.src = "https://www.youtube.com/iframe_api"; document.body.appendChild(t); })();
 
-  // Esta función será llamada por la API de YT cuando esté lista
   window.onYouTubeIframeAPIReady = function(){
     visiblePlayer = new YT.Player('ytVisible', {
       width:'100%', height:'100%',
@@ -155,9 +231,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function onStateChange(e){
     const s = e.data;
-    if(s === YT.PlayerState.PLAYING){ isPlaying = true; setPlayIcon(true); startProgressTimer(); showMini(true); spinVinyl(true); }
-    else if(s === YT.PlayerState.PAUSED){ isPlaying = false; setPlayIcon(false); stopProgressTimer(); spinVinyl(false); }
-    else if(s === YT.PlayerState.ENDED){ if(repeatMode === 'one'){ playCurrent(); } else { playNext(); } }
+    if(s === YT.PlayerState.PLAYING){
+      isPlaying = true; setPlayIcon(true); startProgressTimer(); showMini(true); spinVinyl(true);
+      updateMediaSession(currentTrack || {}, true);
+      showMediaNotification(currentTrack || {}, true);
+    }
+    else if(s === YT.PlayerState.PAUSED){
+      isPlaying = false; setPlayIcon(false); stopProgressTimer(); spinVinyl(false);
+      updateMediaSession(currentTrack || {}, false);
+      showMediaNotification(currentTrack || {}, false);
+    }
+    else if(s === YT.PlayerState.ENDED){
+      if(repeatMode === 'one'){ playCurrent(); } else { playNext(); }
+    }
   }
   function onPlayerError(e){ console.warn('YT error', e); showToast('Error reproductor'); }
 
@@ -187,6 +273,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     addRecent(currentTrack);
     saveStorage();
+    updateMediaSession(currentTrack, autoplay);
+    ensureNotificationPermission().then(ok => {
+      if(ok) showMediaNotification(currentTrack, autoplay);
+    });
   }
 
   function playCurrent(){ if(currentIndex<0 || currentIndex>=queue.length) return; loadAndPlayById(queue[currentIndex].videoId, true, true, currentIndex); }
@@ -218,6 +308,8 @@ document.addEventListener('DOMContentLoaded', function () {
     try{ visiblePlayer && visiblePlayer.stopVideo && visiblePlayer.stopVideo(); }catch(e){}
     try{ hiddenPlayer && hiddenPlayer.stopVideo && hiddenPlayer.stopVideo(); }catch(e){}
     isPlaying = false; setPlayIcon(false); stopProgressTimer(); spinVinyl(false);
+    updateMediaSession(currentTrack || {}, false);
+    showMediaNotification(currentTrack || {}, false);
   }
   function togglePlayPause(){ const p = (videoShown && visiblePlayer && visiblePlayer.getPlayerState) ? visiblePlayer : hiddenPlayer; if(!p || typeof p.getPlayerState !== 'function') return; const s = p.getPlayerState(); if(s === YT.PlayerState.PLAYING) p.pauseVideo(); else p.playVideo(); }
   function setPlayIcon(playing){
@@ -253,8 +345,35 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* =====================
+     YouTube search with rotation
+     ===================== */
+  async function youtubeSearch(query, maxResults=CONFIG.YT_MAX_RESULTS){
+    if(!query || !query.trim()) return [];
+    const q = encodeURIComponent(query);
+    for(let i=0;i<CONFIG.API_KEYS.length;i++){
+      const {key, idx} = getCurrentKeyAndAdvance(i>0);
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxResults}&q=${q}&key=${key}`;
+      try{
+        const res = await fetch(url);
+        if(!res.ok) { continue; }
+        const data = await res.json();
+        STORAGE.keyIndex = idx; saveStorage();
+        return (data.items || []).map(it=>({
+          videoId: it.id.videoId,
+          title: it.snippet.title,
+          channel: it.snippet.channelTitle,
+          thumb: it.snippet.thumbnails?.high?.url || it.snippet.thumbnails?.default?.url
+        }));
+      }catch(err){ continue; }
+    }
+    showToast('No fue posible conectar con YouTube');
+    return [];
+  }
+
+  /* =====================
      Rendering results & lists
      ===================== */
+  let lastResults = [];
   function renderResults(list){
     const area = $('#listArea');
     area.innerHTML = '';
@@ -304,7 +423,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // escapeHtml corregido
+  // escapeHtml
   function escapeHtml(s){ return String(s || '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   /* =====================
@@ -419,7 +538,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* playlist view (modal) */
   function openPlaylistView(name){
     const list = STORAGE.playlists[name] || [];
     const html = `<div style="max-height:320px;overflow:auto">
@@ -448,7 +566,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }}
       ]
     });
-    // attach click handlers
     setTimeout(()=>{
       document.querySelectorAll('.pl-row').forEach((r)=>{
         r.addEventListener('click', ()=>{
@@ -501,7 +618,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('#btnMinimize').addEventListener('click', minimize);
   $('#miniPlayer').addEventListener('click', ()=>{ $('#leftCard').classList.remove('hidden'); $('#miniPlayer').classList.add('hidden'); });
 
-  /* queue modal - build with clickable rows that close on click */
+  /* queue modal */
   $('#btnQueue').addEventListener('click', ()=>{
     if(!queue || !queue.length) return showToast('Cola vacía');
     const html = `<div style="max-height:380px;overflow:auto">${queue.map((t,i)=>`<div data-i="${i}" class="queue-row" style="display:flex;gap:8px;padding:8px;align-items:center;cursor:pointer"><div style="width:44px;height:44px;background-image:url('${t.thumb}');background-size:cover;border-radius:8px"></div><div style="flex:1"><div style="font-weight:700">${escapeHtml(t.title)}</div><div class="sub">${escapeHtml(t.channel)}</div></div><div style="width:48px;text-align:center">${i===currentIndex?'<small>▶</small>':''}</div></div>`).join('')}</div>`;
@@ -531,7 +648,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  /* fullscreen: try iframe, fallback to open youtube */
+  /* fullscreen */
   $('#btnFullScreen').addEventListener('click', ()=>{
     try{
       let iframe = null;
@@ -548,8 +665,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  /* search: now DOES NOT autoplay first result; sólo muestra resultados y deja la reproducción existente */
-  let lastResults = [];
+  /* search: does not autoplay first result */
   async function onSearch(){
     const q = $('#searchInput').value.trim();
     if(!q){ showToast('Escribe para buscar'); return; }
@@ -582,18 +698,13 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderAll(){ renderRecents(); renderPlaylistsUI(); }
   renderAll();
 
-  /* small click outside to remove blur state */
   document.addEventListener('click', (e)=>{ if(!e.target.closest('.search-box')) $('#rightPanel').classList.remove('search-active'); });
 
-  /* initial toast */
   showToast('Listo — busca y toca una fila para reproducir');
 
-  /* expose for debugging si quieres */
   window._mp = {STORAGE, saveStorage, queue};
 
-  /* =====================
-     Visibility handling: transfer to hidden player when page hidden
-     ===================== */
+  /* Visibility handling */
   document.addEventListener('visibilitychange', async ()=>{
     try{
       if(document.hidden){
@@ -620,16 +731,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }catch(e){ console.warn('visibility transfer error', e); }
   });
 
-  /* small helper to show mini */
+  /* helper showMini */
   function showMini(show=true){ if(show) $('#miniPlayer').classList.remove('hidden'); else $('#miniPlayer').classList.add('hidden'); }
 
 }); // DOMContentLoaded end
 
 /* =====================
-   Registro del Service Worker para PWA
+   Registro del Service Worker
    ===================== */
 if ('serviceWorker' in navigator) {
-  // Registrarlo en load para que todo esté cargado
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('./sw.js').then(function(reg) {
       console.log('Service Worker registrado:', reg.scope);
